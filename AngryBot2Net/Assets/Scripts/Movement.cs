@@ -1,8 +1,11 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using Photon.Pun;
+using Photon.Realtime;
+using Cinemachine;
 
-public class Movement : MonoBehaviour
+public class Movement : MonoBehaviourPunCallbacks, IPunObservable
 {
     CharacterController controller;
     new Transform transform;
@@ -13,7 +16,15 @@ public class Movement : MonoBehaviour
     Ray ray;
     Vector3 hit_point;
 
+    PhotonView pv;
+
+    CinemachineVirtualCamera virtual_camera;
+
     public float move_speed = 10;
+
+    Vector3 receive_pos;
+    Quaternion receive_rot;
+    public float damping = 10;
 
     void Start()
     {
@@ -22,13 +33,34 @@ public class Movement : MonoBehaviour
         animator = GetComponent<Animator>();
         camera = Camera.main;
 
+        pv = GetComponent<PhotonView>();
+        virtual_camera = FindObjectOfType<CinemachineVirtualCamera>();
+
+        if(pv.IsMine == true)
+        {
+            virtual_camera.Follow = transform;
+            virtual_camera.LookAt = transform;
+        }
+
         plane = new Plane(transform.up, transform.position);
     }
 
     void Update()
     {
-        Move();
-        Turn();
+        if(pv.IsMine == true)
+        {
+            Move();
+            Turn();
+        }
+        else
+        {
+            transform.position = Vector3.Lerp(transform.position,
+                                              receive_pos,
+                                              Time.deltaTime * damping);
+            transform.rotation = Quaternion.Lerp(transform.rotation,
+                                              receive_rot,
+                                              Time.deltaTime * damping);
+        }
     }
 
     float h => Input.GetAxis("Horizontal");
@@ -65,5 +97,19 @@ public class Movement : MonoBehaviour
         look_dir.y = 0;
 
         transform.localRotation = Quaternion.LookRotation(look_dir);
+    }
+
+    public void OnPhotonSerializeView(PhotonStream stream, PhotonMessageInfo info)
+    {
+        if(stream.IsWriting == true)
+        {
+            stream.SendNext(transform.position);
+            stream.SendNext(transform.rotation);
+        }
+        else
+        {
+            receive_pos = (Vector3)stream.ReceiveNext();
+            receive_rot = (Quaternion)stream.ReceiveNext();
+        }
     }
 }
